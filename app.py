@@ -71,12 +71,10 @@ def extract_text_and_email(urls):
             emails = set(re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", page_text))
             found_emails.update(emails)
 
-            # Extract emails from mailto links and strip any query parameters after the email address
+            # Extract emails from mailto links
             for mail_link in soup.select('a[href^=mailto]'):
                 email = mail_link.get("href").replace("mailto:", "").strip()
                 if "@" in email:
-                    # Strip out any query parameters after the email address (like ?subject=Hello)
-                    email = email.split('?')[0]
                     found_emails.add(email)
 
         except Exception:
