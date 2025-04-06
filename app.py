@@ -10,16 +10,18 @@ from openai import OpenAI
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
-# Streamlit UI
+# Streamlit UI setup
 st.set_page_config(page_title="VC Info Extractor", layout="centered")
 st.title("🔎 VC Info Extractor")
 st.write("Paste a VC firm website and get their investment details:")
 
 url = st.text_input("🔗 VC Website URL", "https://example-vc.com")
 
+# Helper function to check if a link is internal
 def is_internal_link(base_url, link):
     return urlparse(link).netloc in ["", urlparse(base_url).netloc]
 
+# Function to find internal links with relevant keywords
 def get_relevant_internal_pages(base_url, keywords, max_pages=3):
     try:
         response = requests.get(base_url, timeout=10)
@@ -36,7 +38,7 @@ def get_relevant_internal_pages(base_url, keywords, max_pages=3):
                         internal_links.append(full_url)
                         break
 
-        # Deduplicate and limit
+        # Deduplicate and limit the number of pages to scrape
         seen = set()
         filtered = []
         for link in internal_links:
@@ -50,6 +52,7 @@ def get_relevant_internal_pages(base_url, keywords, max_pages=3):
     except:
         return []
 
+# Function to extract text and emails from multiple pages
 def extract_text_and_email(urls):
     combined_text = ""
     found_emails = set()
@@ -61,11 +64,11 @@ def extract_text_and_email(urls):
             page_text = soup.get_text(separator=' ', strip=True)
             combined_text += page_text[:3000] + "\n\n"
 
-            # Extract email addresses
+            # Extract email addresses from the text
             emails = set(re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", page_text))
             found_emails.update(emails)
 
-            # Also look for mailto links
+            # Extract emails from mailto links
             for mail_link in soup.select('a[href^=mailto]'):
                 email = mail_link.get("href").replace("mailto:", "").strip()
                 if "@" in email:
@@ -82,6 +85,7 @@ if st.button("Extract Info"):
         pages_to_scrape = [url] + get_relevant_internal_pages(url, keywords)
         scraped_text, emails = extract_text_and_email(pages_to_scrape)
 
+        # Prompt for GPT to process the extracted text
         prompt = f"""
         You are an assistant that extracts startup-relevant VC info from website text.
 
@@ -98,6 +102,7 @@ if st.button("Extract Info"):
         {scraped_text}
         """
 
+        # Send prompt to GPT and get a response
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
@@ -107,14 +112,21 @@ if st.button("Extract Info"):
 
         gpt_output = response.choices[0].message.content.strip()
 
-        # Add extracted email if found
+        # Add extracted email to the output
         if emails:
             email_section = f"\n- 📧 **Contact Email**: {emails[0]}"
         else:
             email_section = "\n- 📧 **Contact Email**: Not found"
 
+        # Display the formatted output using st.markdown
         st.success("📋 Extracted VC Info:")
-        st.text_area("Output", value=gpt_output + email_section, height=350)
+
+        # Render the output with markdown formatting
+        st.markdown(gpt_output + email_section)
+
+        # Optionally show raw text output in a collapsible section
+        with st.expander("📄 View raw output"):
+            st.text_area("Raw Text", value=gpt_output + email_section, height=350)
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
