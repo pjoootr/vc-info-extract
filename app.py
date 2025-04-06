@@ -4,6 +4,9 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import re
 import os
+import csv
+import pandas as pd
+from io import StringIO
 from openai import OpenAI
 
 # Load OpenAI API key
@@ -13,9 +16,9 @@ client = OpenAI(api_key=api_key)
 # Streamlit UI setup
 st.set_page_config(page_title="VC Info Extractor", layout="centered")
 st.title("🔎 VC Info Extractor")
-st.write("Paste a VC firm website and get their investment details:")
+st.write("Paste VC firm website URLs below (comma-separated) to get investment details:")
 
-url = st.text_input("🔗 VC Website URL", "https://example-vc.com")
+urls_input = st.text_area("🔗 VC Website URLs (comma-separated)", "https://example-vc.com")
 
 # Helper function to check if a link is internal
 def is_internal_link(base_url, link):
@@ -68,10 +71,12 @@ def extract_text_and_email(urls):
             emails = set(re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", page_text))
             found_emails.update(emails)
 
-            # Extract emails from mailto links
+            # Extract emails from mailto links and strip any query parameters after the email address
             for mail_link in soup.select('a[href^=mailto]'):
                 email = mail_link.get("href").replace("mailto:", "").strip()
                 if "@" in email:
+                    # Strip out any query parameters after the email address (like ?subject=Hello)
+                    email = email.split('?')[0]
                     found_emails.add(email)
 
         except Exception:
@@ -79,54 +84,79 @@ def extract_text_and_email(urls):
 
     return combined_text[:8000], list(found_emails)
 
+# Function to convert extracted data to CSV format
+def convert_to_csv(data):
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["URL", "About the Fund", "Ticket Size", "Stage", "Geography", "Sectors", "Contact Email"])
+    
+    for row in data:
+        writer.writerow(row)
+    
+    return output.getvalue()
+
 if st.button("Extract Info"):
     try:
+        urls = [url.strip() for url in urls_input.split(",")]
         keywords = ["about", "investment", "focus", "team", "criteria", "approach", "contact"]
-        pages_to_scrape = [url] + get_relevant_internal_pages(url, keywords)
-        scraped_text, emails = extract_text_and_email(pages_to_scrape)
 
-        # Prompt for GPT to process the extracted text
-        prompt = f"""
-        You are an assistant that extracts startup-relevant VC info from website text.
+        extracted_data = []
 
-        From the following text, extract:
-        - A short 2–3 sentence description **about the fund**
-        - Typical **ticket size**
-        - **Investment stage** (e.g., Seed, Series A)
-        - **Geography** (e.g., US, Europe, Global)
-        - Preferred **sectors** (e.g., SaaS, Fintech)
+        for url in urls:
+            pages_to_scrape = [url] + get_relevant_internal_pages(url, keywords)
+            scraped_text, emails = extract_text_and_email(pages_to_scrape)
 
-        Format the answer in clean bullet points.
+            # Prompt for GPT to process the extracted text
+            prompt = f"""
+            You are an assistant that extracts startup-relevant VC info from website text.
 
-        VC Website Text:
-        {scraped_text}
-        """
+            From the following text, extract:
+            - A short 2–3 sentence description **about the fund**
+            - Typical **ticket size**
+            - **Investment stage** (e.g., Seed, Series A)
+            - **Geography** (e.g., US, Europe, Global)
+            - Preferred **sectors** (e.g., SaaS, Fintech)
 
-        # Send prompt to GPT and get a response
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=1500,
-        )
+            Format the answer in clean bullet points.
 
-        gpt_output = response.choices[0].message.content.strip()
+            VC Website Text:
+            {scraped_text}
+            """
 
-        # Add extracted email to the output
-        if emails:
-            email_section = f"\n- 📧 **Contact Email**: {emails[0]}"
-        else:
-            email_section = "\n- 📧 **Contact Email**: Not found"
+            # Send prompt to GPT and get a response
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=1500,
+            )
 
-        # Display the formatted output using st.markdown
+            gpt_output = response.choices[0].message.content.strip()
+
+            # Add extracted email to the output
+            if emails:
+                email_section = f"\n- 📧 **Contact Email**: {emails[0]}"
+            else:
+                email_section = "\n- 📧 **Contact Email**: Not found"
+
+            # Prepare the data to be included in the CSV
+            extracted_data.append([url, gpt_output, "", "", "", email_section])
+
+        # Display the formatted output using st.markdown for each URL
         st.success("📋 Extracted VC Info:")
 
-        # Render the output with markdown formatting
-        st.markdown(gpt_output + email_section)
+        for data in extracted_data:
+            st.markdown(f"### {data[0]}")
+            st.markdown(data[1] + data[6])
 
-        # Optionally show raw text output in a collapsible section
-        with st.expander("📄 View raw output"):
-            st.text_area("Raw Text", value=gpt_output + email_section, height=350)
+        # Allow the user to download the CSV file
+        csv_data = convert_to_csv(extracted_data)
+        st.download_button(
+            label="Download as CSV",
+            data=csv_data,
+            file_name="vc_info.csv",
+            mime="text/csv",
+        )
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
