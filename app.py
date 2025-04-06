@@ -17,7 +17,7 @@ st.title("🔎 VC Info Extractor")
 st.write("Paste one or more VC websites (comma-separated):")
 
 # Text area for multi-URL input
-urls_input = st.text_area("🔗 VC Website URLs", "https://www.credoventures.com/, https://www.beringea.co.uk/")
+urls_input = st.text_area("🔗 VC Website URLs", "https://www.examplefund1.com/, https://www.examplefund2.com/")
 
 # Helper: Check if link is internal
 def is_internal_link(base_url, link):
