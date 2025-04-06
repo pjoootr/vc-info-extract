@@ -125,24 +125,34 @@ if st.button("Extract Info"):
 
         gpt_output = response.choices[0].message.content.strip()
 
+        # Parse the GPT output into individual components
+        about_fund = "Not found"
+        ticket_size = "Not found"
+        stage = "Not found"
+        geography = "Not found"
+        sectors = "Not found"
+        email = "Not found"
+
+        # Split the output by bullet points
+        lines = gpt_output.split("\n")
+        for line in lines:
+            if line.lower().startswith("about the fund"):
+                about_fund = line.split(":")[-1].strip()
+            elif line.lower().startswith("ticket size"):
+                ticket_size = line.split(":")[-1].strip()
+            elif line.lower().startswith("stage"):
+                stage = line.split(":")[-1].strip()
+            elif line.lower().startswith("geography"):
+                geography = line.split(":")[-1].strip()
+            elif line.lower().startswith("sectors"):
+                sectors = line.split(":")[-1].strip()
+
         # Add extracted email to the output
         if emails:
-            email_section = f"\n- 📧 **Contact Email**: {emails[0]}"
-        else:
-            email_section = "\n- 📧 **Contact Email**: Not found"
+            email = emails[0]
 
-        # Display the formatted output using st.markdown
-        st.success("📋 Extracted VC Info:")
-
-        # Render the output with markdown formatting
-        st.markdown(gpt_output + email_section)
-
-        # Optionally show raw text output in a collapsible section
-        with st.expander("📄 View raw output"):
-            st.text_area("Raw Text", value=gpt_output + email_section, height=350)
-
-        # Prepare the extracted data for CSV
-        extracted_data = [[url, gpt_output, "", "", "", emails[0] if emails else "Not found"]]
+        # Prepare data for CSV download
+        extracted_data = [[url, about_fund, ticket_size, stage, geography, sectors, email]]
 
         # Provide a download button for the CSV file
         csv_data = convert_to_csv(extracted_data)
@@ -152,6 +162,23 @@ if st.button("Extract Info"):
             file_name="vc_info.csv",
             mime="text/csv",
         )
+
+        # Display the formatted output using st.markdown
+        st.success("📋 Extracted VC Info:")
+
+        # Render the output with markdown formatting
+        st.markdown(f"""
+        **About the Fund**: {about_fund}
+        **Ticket Size**: {ticket_size}
+        **Stage**: {stage}
+        **Geography**: {geography}
+        **Sectors**: {sectors}
+        **Contact Email**: {email}
+        """)
+
+        # Optionally show raw text output in a collapsible section
+        with st.expander("📄 View raw output"):
+            st.text_area("Raw Text", value=gpt_output, height=350)
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
